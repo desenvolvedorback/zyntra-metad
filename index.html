@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZYNTRA · Metadata Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="bg-grid"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">
+      <span class="brand-mark-dot"></span>
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6">
+        <path d="M4 4h16v4l-9 7 9 7v0H4v-4l9-7-9-7z"/>
+      </svg>
+    </div>
+    <div class="brand-text">
+      <h1>ZYNTRA</h1>
+      <span>Metadata Intelligence</span>
+    </div>
+  </div>
+  <div class="topbar-actions" id="topbarActions" hidden>
+    <div class="risk-pill" id="riskPill"><span class="risk-dot"></span><span id="riskLabel">—</span></div>
+    <button class="btn btn-ghost" id="btnNewAnalysis">🔍 Nova Análise</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ TELA DE UPLOAD ============ -->
+  <section class="upload-screen" id="uploadScreen">
+    <div class="scanline"></div>
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" hidden>
+      <div class="dropzone-inner">
+        <div class="dropzone-icon">
+          <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.3">
+            <path d="M12 3v12m0-12 4.5 4.5M12 3 7.5 7.5"/>
+            <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+          </svg>
+        </div>
+        <p class="dropzone-title">Arraste um arquivo aqui</p>
+        <p class="dropzone-or">OU</p>
+        <button class="btn btn-primary" id="btnSelect">Selecionar Arquivo</button>
+        <p class="dropzone-hint">Qualquer tipo de arquivo · até 300MB · processado apenas nesta sessão</p>
+      </div>
+    </div>
+
+    <div class="supported">
+      <p class="supported-label">Arquivos suportados</p>
+      <div class="supported-grid">
+        <div class="supported-item"><span>📄</span>PDF</div>
+        <div class="supported-item"><span>🖼</span>Imagens</div>
+        <div class="supported-item"><span>🎥</span>Vídeos</div>
+        <div class="supported-item"><span>🎵</span>Áudios</div>
+        <div class="supported-item"><span>📦</span>ZIP</div>
+        <div class="supported-item"><span>📑</span>Office</div>
+        <div class="supported-item"><span>🖥</span>Executáveis</div>
+        <div class="supported-item"><span>📱</span>APK</div>
+        <div class="supported-item"><span>📂</span>Qualquer Arquivo</div>
+      </div>
+    </div>
+
+    <p class="empty-note" id="emptyNote">Nenhum arquivo analisado.</p>
+
+    <div class="loading" id="loadingState" hidden>
+      <div class="spinner"></div>
+      <p id="loadingText">Analisando arquivo…</p>
+    </div>
+
+    <p class="error-note" id="errorNote" hidden></p>
+  </section>
+
+  <!-- ============ RESULTADO ============ -->
+  <section class="result-screen" id="resultScreen" hidden>
+
+    <div class="toolbar">
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="searchInput" placeholder="Pesquisar em todos os metadados… (ex: gps, adobe, sha)">
+        <button id="btnClearSearch" class="search-clear" hidden>✕</button>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn btn-ghost" id="btnCopyAll">📋 Copiar Tudo</button>
+        <button class="btn btn-ghost" id="btnCopyJson">📑 Copiar JSON</button>
+        <div class="export-dropdown">
+          <button class="btn btn-ghost" id="btnExport">⬇ Exportar ▾</button>
+          <div class="export-menu" id="exportMenu" hidden>
+            <button data-fmt="txt">📄 Exportar TXT</button>
+            <button data-fmt="json">⬇ Exportar JSON</button>
+            <button data-fmt="csv">📊 Exportar CSV</button>
+            <button data-fmt="html">🌐 Exportar HTML</button>
+            <button data-fmt="pdf">📕 Exportar PDF</button>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-danger" id="btnClear">🗑 Limpar</button>
+      </div>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+
+    <div id="searchResults" class="panel" hidden></div>
+
+    <div class="panel-wrap" id="panelWrap"></div>
+
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// Estado
+// ============================================================
+let currentData = null;
+let currentFilename = null;
+let activeTab = "resumo";
+
+const TAB_DEFS = [
+  { id: "resumo",    label: "Resumo",    icon: "🗂" },
+  { id: "metadados", label: "Metadados", icon: "🧬" },
+  { id: "hashes",    label: "Hashes",    icon: "#️⃣" },
+  { id: "exif",      label: "EXIF",      icon: "🖼" },
+  { id: "strings",   label: "Strings",   icon: "🔤" },
+  { id: "gps",       label: "GPS",       icon: "📍" },
+  { id: "hex",       label: "Hex",       icon: "🧾" },
+  { id: "json",      label: "JSON",      icon: "{ }" },
+];
+
+const LABELS = {
+  nome: "Nome", tipo_mime: "Tipo MIME", descricao_real: "Descrição real", extensao: "Extensão",
+  tamanho_bytes: "Tamanho (bytes)", tamanho_legivel: "Tamanho", entropia: "Entropia",
+  sha256: "SHA256", md5: "MD5", analisado_em: "Analisado em",
+  fabricante: "Fabricante", modelo: "Modelo", lente: "Lente", data_original: "Data original",
+  iso: "ISO", exposicao: "Exposição", abertura: "Abertura", flash: "Flash", resolucao: "Resolução",
+  software: "Software", copyright: "Copyright", perfil_icc: "Perfil ICC", thumbnail: "Thumbnail",
+  cor_dominante: "Cor dominante", compressao: "Compressão", orientacao: "Orientação",
+  historico_edicao: "Histórico de edição", assinatura_exif: "Assinatura EXIF", artista: "Artista",
+  distancia_focal: "Distância focal", dpi: "DPI", modo_cor: "Modo de cor", formato: "Formato",
+  latitude: "Latitude", longitude: "Longitude", altitude: "Altitude",
+  google_maps: "Google Maps", openstreetmap: "OpenStreetMap",
+  autor: "Autor", empresa: "Empresa", criador: "Criador", produtor_software: "Produtor / Software",
+  versao_pdf: "Versão PDF", numero_paginas: "Número de páginas", data_criacao: "Data de criação",
+  data_modificacao: "Data de modificação", idioma: "Idioma", permissoes: "Permissões",
+  assinaturas_digitais: "Assinaturas digitais", campos_ocultos_acroform: "Campos ocultos (AcroForm)",
+  objetos_totais: "Objetos totais", javascript: "JavaScript", links_uri: "Links / URIs",
+  urls_encontradas: "URLs encontradas", imagens_internas: "Imagens internas",
+  metadados_xmp: "Metadados XMP", titulo: "Título", assunto: "Assunto", palavras_chave: "Palavras-chave",
+  criptografado: "Criptografado", ultimo_editor: "Último editor", categoria: "Categoria",
+  comentarios: "Comentários", numero_revisao: "Nº de revisões", modelo_template: "Modelo/Template",
+  aplicativo: "Aplicativo", macros_detectadas: "Macros detectadas", numero_arquivos_internos: "Arquivos internos",
+  numero_paragrafos: "Parágrafos", numero_tabelas: "Tabelas", planilhas: "Planilhas",
+  numero_planilhas: "Nº de planilhas", numero_slides: "Nº de slides",
+  duracao_segundos: "Duração (s)", bitrate: "Bitrate", formato_container: "Formato container",
+  album: "Álbum", genero: "Gênero", ano: "Ano", encoder: "Encoder", compositor: "Compositor",
+  comentario: "Comentário", codec_video: "Codec de vídeo", largura: "Largura", altura: "Altura",
+  fps: "FPS", hdr: "HDR", pixel_format: "Pixel format", codec_audio: "Codec de áudio",
+  sample_rate: "Sample rate", canais: "Canais", bitrate_audio: "Bitrate (áudio)",
+  legendas: "Legendas", miniaturas: "Miniaturas",
+  arquivos_internos: "Arquivos internos", total_arquivos: "Total de arquivos",
+  tamanho_total_descomprimido: "Tamanho total descomprimido", comentario_zip: "Comentário do ZIP",
+  manifest_presente: "AndroidManifest.xml presente", dex_files: "Arquivos .dex", numero_dex: "Nº de .dex",
+  bibliotecas_nativas: "Bibliotecas nativas (.so)", assets: "Assets", resources_arsc: "resources.arsc",
+  arquivos_assinatura: "Arquivos de assinatura", manifest_nota: "Nota sobre o Manifest",
+  tipo: "Tipo", arquitetura: "Arquitetura", numero_secoes: "Nº de seções", compilado_em: "Compilado em",
+  dll: "É DLL", executavel: "É executável", pe32_plus: "PE32+", nota: "Nota",
+  endianness: "Endianness", tipo_arquivo: "Tipo de arquivo", maquina: "Máquina",
+  entropia_secoes_nota: "Nota sobre entropia", certificados_encontrados: "Certificados encontrados",
+  certificados: "Certificados", issuer: "Emissor (Issuer)", subject: "Titular (Subject)",
+  serial: "Serial", valido_de: "Válido de", valido_ate: "Válido até",
+  algoritmo_assinatura: "Algoritmo de assinatura", fingerprint_sha256: "Fingerprint SHA256",
+  emails: "E-mails", urls: "URLs", domains: "Domínios", ips_v4: "IPs (v4)", ips_v6: "IPs (v6)",
+  jwt_tokens: "Tokens JWT", api_keys: "Chaves de API", uuids: "UUIDs", user_agents: "User Agents",
+  cookies: "Cookies", printable_sample: "Amostra de texto legível",
+  nivel: "Nível de risco", motivos: "Motivos",
+  crc32: "CRC32", sha1: "SHA1", sha224: "SHA224", sha384: "SHA384", sha512: "SHA512",
+  sha3_256: "SHA3-256", sha3_512: "SHA3-512", blake2b: "BLAKE2b", blake2s: "BLAKE2s",
+};
+
+function label(key) {
+  return LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+const RISK_META = {
+  baixo: { emoji: "🟢", text: "Risco Baixo", cls: "risk-low" },
+  medio: { emoji: "🟡", text: "Risco Médio", cls: "risk-medium" },
+  alto:  { emoji: "🔴", text: "Risco Alto",  cls: "risk-high" },
+};
+
+// ============================================================
+// Upload / Drag & Drop
+// ============================================================
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+
+document.getElementById("btnSelect").addEventListener("click", () => fileInput.click());
+dropzone.addEventListener("click", (e) => { if (e.target.id !== "btnSelect") fileInput.click(); });
+fileInput.addEventListener("change", () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+["dragenter", "dragover"].forEach(evt => {
+  dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.add("dragging"); });
+});
+["dragleave", "drop"].forEach(evt => {
+  dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.remove("dragging"); });
+});
+dropzone.addEventListener("drop", (e) => {
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+async function handleFile(file) {
+  currentFilename = file.name;
+  document.getElementById("emptyNote").hidden = true;
+  document.getElementById("errorNote").hidden = true;
+  document.getElementById("loadingState").hidden = false;
+  document.getElementById("dropzone").style.opacity = "0.35";
+  document.getElementById("dropzone").style.pointerEvents = "none";
+
+  const msgs = ["Detectando tipo real do arquivo…", "Calculando hashes…", "Extraindo metadados…", "Montando relatório…"];
+  let mi = 0;
+  const loadingText = document.getElementById("loadingText");
+  const interval = setInterval(() => { loadingText.textContent = msgs[mi % msgs.length]; mi++; }, 900);
+
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/analyze", { method: "POST", body: form });
+    const json = await res.json();
+    clearInterval(interval);
+    if (!res.ok) {
+      showError(json.erro || "Falha ao analisar o arquivo.");
+      return;
+    }
+    currentData = json;
+    renderResult();
+  } catch (err) {
+    clearInterval(interval);
+    showError("Erro de conexão ao analisar o arquivo: " + err.message);
+  }
+}
+
+function showError(msg) {
+  document.getElementById("loadingState").hidden = true;
+  document.getElementById("dropzone").style.opacity = "1";
+  document.getElementById("dropzone").style.pointerEvents = "auto";
+  const errNote = document.getElementById("errorNote");
+  errNote.textContent = "⚠ " + msg;
+  errNote.hidden = false;
+}
+
+// ============================================================
+// Render do resultado
+// ============================================================
+function renderResult() {
+  document.getElementById("uploadScreen").hidden = true;
+  document.getElementById("resultScreen").hidden = false;
+  document.getElementById("topbarActions").hidden = false;
+
+  const risk = currentData.risk || {};
+  const meta = RISK_META[risk.nivel] || RISK_META.baixo;
+  const pill = document.getElementById("riskPill");
+  pill.className = "risk-pill " + meta.cls;
+  document.getElementById("riskLabel").textContent = meta.emoji + " " + meta.text;
+
+  buildTabs();
+  setActiveTab("resumo");
+}
+
+function buildTabs() {
+  const tabsEl = document.getElementById("tabs");
+  tabsEl.innerHTML = "";
+  const available = TAB_DEFS.filter(t => {
+    if (["resumo", "metadados", "hashes", "strings", "hex", "json"].includes(t.id)) return true;
+    if (t.id === "exif") return !!currentData.exif;
+    if (t.id === "gps") return !!currentData.gps;
+    return false;
+  });
+  available.forEach(t => {
+    const btn = document.createElement("button");
+    btn.className = "tab-btn" + (t.id === activeTab ? " active" : "");
+    btn.innerHTML = `<span>${t.icon}</span> ${t.label}`;
+    btn.addEventListener("click", () => setActiveTab(t.id));
+    btn.dataset.tab = t.id;
+    tabsEl.appendChild(btn);
+  });
+}
+
+function setActiveTab(id) {
+  activeTab = id;
+  document.getElementById("searchInput").value = "";
+  document.getElementById("btnClearSearch").hidden = true;
+  document.getElementById("searchResults").hidden = true;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === id));
+  const wrap = document.getElementById("panelWrap");
+  wrap.hidden = false;
+  wrap.innerHTML = "";
+
+  if (id === "resumo") renderResumo(wrap);
+  else if (id === "metadados") renderMetadados(wrap);
+  else if (id === "hashes") renderHashes(wrap);
+  else if (id === "exif") renderExifGps(wrap, "exif");
+  else if (id === "gps") renderExifGps(wrap, "gps");
+  else if (id === "strings") renderStrings(wrap);
+  else if (id === "hex") renderHex(wrap);
+  else if (id === "json") renderJson(wrap);
+}
+
+function sectionEl(title) {
+  const sec = document.createElement("div");
+  sec.className = "section";
+  if (title) {
+    const h = document.createElement("h3");
+    h.className = "section-title";
+    h.textContent = title;
+    sec.appendChild(h);
+  }
+  return sec;
+}
+
+function cardGrid() {
+  const grid = document.createElement("div");
+  grid.className = "card-grid";
+  return grid;
+}
+
+function fieldCard(key, value) {
+  const card = document.createElement("div");
+  card.className = "field-card";
+  card.dataset.search = (key + " " + label(key) + " " + String(value)).toLowerCase();
+
+  const top = document.createElement("div");
+  top.className = "field-top";
+  const lab = document.createElement("span");
+  lab.className = "field-label";
+  lab.textContent = label(key);
+  top.appendChild(lab);
+
+  const copyBtn = document.createElement("button");
+  copyBtn.className = "copy-btn";
+  copyBtn.innerHTML = "📋";
+  copyBtn.title = "Copiar";
+  copyBtn.addEventListener("click", () => copyText(String(value), copyBtn));
+  top.appendChild(copyBtn);
+  card.appendChild(top);
+
+  const val = document.createElement("div");
+  val.className = "field-value";
+
+  const strVal = String(value);
+  if (/^https?:\/\//.test(strVal)) {
+    const a = document.createElement("a");
+    a.href = strVal; a.target = "_blank"; a.rel = "noopener";
+    a.textContent = strVal;
+    val.appendChild(a);
+  } else if (typeof value === "boolean") {
+    val.innerHTML = value ? '<span class="badge badge-yes">Sim</span>' : '<span class="badge badge-no">Não</span>';
+  } else {
+    val.textContent = strVal;
+  }
+  card.appendChild(val);
+  return card;
+}
+
+function renderObjectAsCards(container, obj, skipKeys = []) {
+  const grid = cardGrid();
+  let any = false;
+  for (const [k, v] of Object.entries(obj)) {
+    if (skipKeys.includes(k)) continue;
+    if (v === null || v === undefined || v === "") continue;
+    if (Array.isArray(v)) {
+      if (v.length === 0) continue;
+      if (typeof v[0] === "object") continue; // tratado separadamente
+      grid.appendChild(fieldCard(k, v.join(", ")));
+      any = true;
+    } else if (typeof v === "object") {
+      continue; // tratado separadamente (nested)
+    } else {
+      grid.appendChild(fieldCard(k, v));
+      any = true;
+    }
+  }
+  if (any) container.appendChild(grid);
+  return any;
+}
+
+function renderArrayOfObjects(container, title, arr, itemTitleKey) {
+  const sec = sectionEl(title);
+  arr.forEach((item, i) => {
+    const grid = cardGrid();
+    grid.classList.add("nested-grid");
+    const header = document.createElement("p");
+    header.className = "nested-item-title";
+    header.textContent = itemTitleKey && item[itemTitleKey] ? item[itemTitleKey] : `#${i + 1}`;
+    sec.appendChild(header);
+    for (const [k, v] of Object.entries(item)) {
+      if (v === null || v === undefined || v === "") continue;
+      if (typeof v === "object") continue;
+      grid.appendChild(fieldCard(k, v));
+    }
+    sec.appendChild(grid);
+  });
+  container.appendChild(sec);
+}
+
+// ---- Resumo ----
+function renderResumo(wrap) {
+  const sec = sectionEl("Cartão Resumo");
+  renderObjectAsCards(sec, currentData.file || {});
+  wrap.appendChild(sec);
+
+  const riskSec = sectionEl("Indicador de Risco");
+  const risk = currentData.risk || {};
+  const meta = RISK_META[risk.nivel] || RISK_META.baixo;
+  const box = document.createElement("div");
+  box.className = "risk-box " + meta.cls;
+  box.innerHTML = `<div class="risk-box-level">${meta.emoji} ${meta.text}</div>`;
+  const ul = document.createElement("ul");
+  (risk.motivos || []).forEach(m => {
+    const li = document.createElement("li");
+    li.textContent = m;
+    ul.appendChild(li);
+  });
+  box.appendChild(ul);
+  riskSec.appendChild(box);
+  wrap.appendChild(riskSec);
+
+  const presentSections = ["exif","gps","pdf","office","audio","video","zip","apk","executable","certificates"]
+    .filter(k => currentData[k]);
+  if (presentSections.length) {
+    const infoSec = sectionEl("Categorias detectadas neste arquivo");
+    const chips = document.createElement("div");
+    chips.className = "chip-row";
+    presentSections.forEach(k => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = label(k);
+      chips.appendChild(chip);
+    });
+    infoSec.appendChild(chips);
+    wrap.appendChild(infoSec);
+  }
+}
+
+// ---- Metadados (consolida tudo que não é hash/exif/strings/hex) ----
+function renderMetadados(wrap) {
+  const map = {
+    pdf: "PDF", office: "Office", audio: "Áudio", video: "Vídeo",
+    zip: "ZIP", apk: "APK", executable: "Executável", certificates: "Certificados"
+  };
+  let any = false;
+  for (const [key, title] of Object.entries(map)) {
+    const data = currentData[key];
+    if (!data) continue;
+    any = true;
+    const sec = sectionEl(title);
+    renderObjectAsCards(sec, data, ["arquivos_internos", "certificados", "urls_encontradas", "dex_files", "bibliotecas_nativas", "arquivos_assinatura", "planilhas", "motivos"]);
+
+    if (Array.isArray(data.urls_encontradas) && data.urls_encontradas.length) {
+      const grid = cardGrid();
+      data.urls_encontradas.forEach((u, i) => grid.appendChild(fieldCard("url_" + i, u)));
+      sec.appendChild(grid);
+    }
+    if (Array.isArray(data.arquivos_internos) && data.arquivos_internos.length) {
+      renderArrayOfObjects(sec, "Arquivos internos", data.arquivos_internos.slice(0, 50), "nome");
+    }
+    if (Array.isArray(data.certificados) && data.certificados.length) {
+      renderArrayOfObjects(sec, "Certificados", data.certificados, "subject");
+    }
+    wrap.appendChild(sec);
+  }
+  if (!any) {
+    wrap.appendChild(emptyState("Nenhum metadado específico de tipo de arquivo foi encontrado (ex: PDF, Office, APK). Veja as abas Resumo, Hashes e Strings."));
+  }
+}
+
+// ---- Hashes ----
+function renderHashes(wrap) {
+  const sec = sectionEl("Hashes Gerados");
+  renderObjectAsCards(sec, currentData.hashes || {});
+  wrap.appendChild(sec);
+}
+
+// ---- EXIF / GPS ----
+function renderExifGps(wrap, which) {
+  const data = currentData[which];
+  if (!data) { wrap.appendChild(emptyState("Nenhum dado " + which.toUpperCase() + " encontrado neste arquivo.")); return; }
+  const sec = sectionEl(which === "exif" ? "Dados EXIF" : "Dados de Geolocalização");
+  renderObjectAsCards(sec, data);
+  wrap.appendChild(sec);
+
+  if (which === "gps" && data.latitude && data.longitude) {
+    const mapSec = sectionEl("Mapa");
+    const lat = data.latitude, lon = data.longitude;
+    const d = 0.01;
+    const bbox = `${lon - d}%2C${lat - d}%2C${lon + d}%2C${lat + d}`;
+    const iframe = document.createElement("iframe");
+    iframe.className = "map-frame";
+    iframe.src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lon}`;
+    iframe.loading = "lazy";
+    mapSec.appendChild(iframe);
+    wrap.appendChild(mapSec);
+  }
+}
+
+// ---- Strings ----
+function renderStrings(wrap) {
+  const data = currentData.strings || {};
+  if (Object.keys(data).length === 0) { wrap.appendChild(emptyState("Nenhuma string relevante encontrada.")); return; }
+  for (const [k, arr] of Object.entries(data)) {
+    if (!Array.isArray(arr) || arr.length === 0) continue;
+    const sec = sectionEl(`${label(k)} (${arr.length})`);
+    const grid = cardGrid();
+    arr.forEach((v, i) => grid.appendChild(fieldCard(k + "_" + i, v)));
+    sec.appendChild(grid);
+    wrap.appendChild(sec);
+  }
+}
+
+// ---- Hex ----
+function renderHex(wrap) {
+  const hex = currentData.hex;
+  if (!hex) { wrap.appendChild(emptyState("Sem dados hexadecimais.")); return; }
+  const sec = sectionEl(`Visualização Hexadecimal (${hex.shown_bytes} de ${hex.total_size} bytes)`);
+  const search = document.createElement("input");
+  search.className = "hex-search";
+  search.placeholder = "Buscar no hex/ascii…";
+  sec.appendChild(search);
+
+  const table = document.createElement("div");
+  table.className = "hex-table";
+  const head = document.createElement("div");
+  head.className = "hex-row hex-head";
+  head.innerHTML = `<span class="hex-offset">Offset</span><span class="hex-bytes">Hex</span><span class="hex-ascii">ASCII</span>`;
+  table.appendChild(head);
+
+  hex.rows.forEach(r => {
+    const row = document.createElement("div");
+    row.className = "hex-row";
+    row.dataset.search = (r.hex + " " + r.ascii).toLowerCase();
+    row.innerHTML = `<span class="hex-offset">${r.offset}</span><span class="hex-bytes">${r.hex}</span><span class="hex-ascii">${escapeHtml(r.ascii)}</span>`;
+    table.appendChild(row);
+  });
+  sec.appendChild(table);
+  wrap.appendChild(sec);
+
+  search.addEventListener("input", () => {
+    const q = search.value.toLowerCase();
+    table.querySelectorAll(".hex-row:not(.hex-head)").forEach(row => {
+      row.style.display = !q || row.dataset.search.includes(q) ? "" : "none";
+    });
+  });
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ---- JSON ----
+function renderJson(wrap) {
+  const sec = sectionEl("Estrutura JSON Completa");
+  const pre = document.createElement("pre");
+  pre.className = "json-view";
+  pre.textContent = JSON.stringify(currentData, null, 2);
+  sec.appendChild(pre);
+  wrap.appendChild(sec);
+}
+
+function emptyState(msg) {
+  const div = document.createElement("div");
+  div.className = "empty-state";
+  div.textContent = msg;
+  return div;
+}
+
+// ============================================================
+// Busca global
+// ============================================================
+function flattenForSearch(obj, path = "") {
+  let out = [];
+  if (obj === null || obj === undefined) return out;
+  if (Array.isArray(obj)) {
+    if (obj.length && typeof obj[0] !== "object") {
+      out.push({ key: path, value: obj.join(", ") });
+    } else {
+      obj.forEach((item, i) => out = out.concat(flattenForSearch(item, `${path}[${i}]`)));
+    }
+  } else if (typeof obj === "object") {
+    for (const [k, v] of Object.entries(obj)) {
+      out = out.concat(flattenForSearch(v, path ? `${path}.${k}` : k));
+    }
+  } else {
+    out.push({ key: path, value: obj });
+  }
+  return out;
+}
+
+const searchInput = document.getElementById("searchInput");
+const btnClearSearch = document.getElementById("btnClearSearch");
+searchInput.addEventListener("input", () => {
+  const q = searchInput.value.trim().toLowerCase();
+  btnClearSearch.hidden = !q;
+  const results = document.getElementById("searchResults");
+  const wrap = document.getElementById("panelWrap");
+  if (!q) { results.hidden = true; wrap.hidden = false; return; }
+
+  wrap.hidden = true;
+  results.hidden = false;
+  results.innerHTML = "";
+  if (!currentData) return;
+
+  const flat = flattenForSearch(currentData);
+  const matches = flat.filter(f => f.key.toLowerCase().includes(q) || String(f.value).toLowerCase().includes(q));
+
+  if (!matches.length) {
+    results.appendChild(emptyState(`Nenhum resultado para "${searchInput.value}".`));
+    return;
+  }
+  const sec = sectionEl(`Resultados para "${searchInput.value}" (${matches.length})`);
+  const grid = cardGrid();
+  matches.slice(0, 150).forEach(m => {
+    const shortKey = m.key.split(".").pop().replace(/\[\d+\]/g, "");
+    grid.appendChild(fieldCard(shortKey, m.value));
+  });
+  sec.appendChild(grid);
+  results.appendChild(sec);
+});
+btnClearSearch.addEventListener("click", () => { searchInput.value = ""; searchInput.dispatchEvent(new Event("input")); });
+
+// ============================================================
+// Copiar / Exportar
+// ============================================================
+function copyText(text, btnEl) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast("Copiado!");
+    if (btnEl) {
+      const original = btnEl.innerHTML;
+      btnEl.innerHTML = "✅";
+      setTimeout(() => btnEl.innerHTML = original, 1000);
+    }
+  }).catch(() => showToast("Não foi possível copiar."));
+}
+
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+document.getElementById("btnCopyJson").addEventListener("click", () => {
+  if (!currentData) return;
+  copyText(JSON.stringify(currentData, null, 2));
+});
+
+function buildFlatTextReport() {
+  if (!currentData) return "";
+  let lines = [`ZYNTRA — Metadata Intelligence`, `Relatório de: ${currentFilename}`, `Gerado em: ${new Date().toLocaleString("pt-BR")}`, ""];
+  const flat = flattenForSearch(currentData);
+  flat.forEach(f => lines.push(`${f.key}: ${f.value}`));
+  return lines.join("\n");
+}
+
+document.getElementById("btnCopyAll").addEventListener("click", () => {
+  copyText(buildFlatTextReport());
+});
+
+document.getElementById("btnExport").addEventListener("click", (e) => {
+  e.stopPropagation();
+  document.getElementById("exportMenu").hidden = !document.getElementById("exportMenu").hidden;
+});
+document.addEventListener("click", () => document.getElementById("exportMenu").hidden = true);
+
+document.getElementById("exportMenu").addEventListener("click", (e) => {
+  const fmt = e.target.dataset.fmt;
+  if (!fmt || !currentData) return;
+  e.stopPropagation();
+  document.getElementById("exportMenu").hidden = true;
+  exportAs(fmt);
+});
+
+function downloadBlob(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function baseName() {
+  return "zyntra_" + (currentFilename || "arquivo").replace(/[^a-z0-9_.-]/gi, "_");
+}
+
+function exportAs(fmt) {
+  const base = baseName();
+  if (fmt === "json") {
+    downloadBlob(JSON.stringify(currentData, null, 2), base + ".json", "application/json");
+  } else if (fmt === "txt") {
+    downloadBlob(buildFlatTextReport(), base + ".txt", "text/plain");
+  } else if (fmt === "csv") {
+    const flat = flattenForSearch(currentData);
+    const rows = [["campo", "valor"]].concat(flat.map(f => [f.key, String(f.value).replace(/"/g, '""')]));
+    const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+    downloadBlob(csv, base + ".csv", "text/csv");
+  } else if (fmt === "html") {
+    const flat = flattenForSearch(currentData);
+    const rows = flat.map(f => `<tr><td>${escapeHtml(f.key)}</td><td>${escapeHtml(String(f.value))}</td></tr>`).join("");
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório ZYNTRA — ${escapeHtml(currentFilename)}</title>
+      <style>body{font-family:monospace;background:#08111f;color:#fff;padding:2rem}
+      table{width:100%;border-collapse:collapse}td{border-bottom:1px solid #2563eb44;padding:6px 10px;font-size:13px}
+      td:first-child{color:#38bdf8;width:35%}h1{color:#38bdf8}</style></head>
+      <body><h1>ZYNTRA — Relatório de Metadados</h1><p>Arquivo: ${escapeHtml(currentFilename)}</p>
+      <table>${rows}</table></body></html>`;
+    downloadBlob(html, base + ".html", "text/html");
+  } else if (fmt === "pdf") {
+    exportPdf(base);
+  }
+}
+
+function exportPdf(base) {
+  const w = window.open("", "_blank");
+  const flat = flattenForSearch(currentData);
+  const rows = flat.map(f => `<tr><td>${escapeHtml(f.key)}</td><td>${escapeHtml(String(f.value))}</td></tr>`).join("");
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeHtml(currentFilename)}</title>
+    <style>
+      body{font-family:'Courier New',monospace;padding:24px;color:#111}
+      h1{color:#2563eb;margin-bottom:0}
+      p{color:#555;margin-top:4px}
+      table{width:100%;border-collapse:collapse;margin-top:16px}
+      td{border-bottom:1px solid #ccc;padding:6px 8px;font-size:11px;word-break:break-all}
+      td:first-child{color:#2563eb;width:32%;font-weight:bold}
+    </style></head><body>
+    <h1>ZYNTRA — Relatório de Metadados</h1>
+    <p>Arquivo: ${escapeHtml(currentFilename)} · Gerado em ${new Date().toLocaleString("pt-BR")}</p>
+    <table>${rows}</table>
+    <script>window.onload = () => window.print();<\/script>
+    </body></html>`);
+  w.document.close();
+}
+
+// ============================================================
+// Limpar / Nova análise
+// ============================================================
+function resetTool() {
+  currentData = null;
+  currentFilename = null;
+  fileInput.value = "";
+  document.getElementById("uploadScreen").hidden = false;
+  document.getElementById("resultScreen").hidden = true;
+  document.getElementById("topbarActions").hidden = true;
+  document.getElementById("loadingState").hidden = true;
+  document.getElementById("errorNote").hidden = true;
+  document.getElementById("emptyNote").hidden = false;
+  document.getElementById("dropzone").style.opacity = "1";
+  document.getElementById("dropzone").style.pointerEvents = "auto";
+}
+document.getElementById("btnClear").addEventListener("click", resetTool);
+document.getElementById("btnNewAnalysis").addEventListener("click", resetTool);
+</script>
+</body>
+</html>
